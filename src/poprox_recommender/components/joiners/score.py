@@ -1,9 +1,30 @@
 from collections import defaultdict
 
+import numpy as np
 from lenskit.pipeline import Component
 from pydantic import BaseModel
 
 from poprox_concepts.domain import CandidateSet
+
+
+class MinMaxScores(Component):
+    """Rescale scores to the 0-1 range so weighted fusion of different scorers is meaningful."""
+
+    config: None
+
+    def __call__(self, candidates: CandidateSet) -> CandidateSet:
+        rescaled = candidates.model_copy()
+        if candidates.scores is None or len(candidates.scores) == 0:
+            return rescaled
+
+        scores = np.asarray(candidates.scores, dtype=np.float32)
+        low, high = scores.min(), scores.max()
+        if high > low:
+            rescaled.scores = (scores - low) / (high - low)
+        else:
+            # all scores equal -> no ranking information, treat as neutral
+            rescaled.scores = np.full_like(scores, 0.5)
+        return rescaled
 
 
 class ScoreFusionConfig(BaseModel):
