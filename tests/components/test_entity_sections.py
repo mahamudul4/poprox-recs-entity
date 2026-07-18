@@ -52,6 +52,27 @@ def test_liked_entity_with_enough_articles_seeds_the_section():
     assert len(seeded.articles) == 3
 
 
+def test_entity_section_matches_by_name_across_different_ids():
+    # Rated entity id differs from the article mention id (same name) -> must still seed.
+    rated_id = uuid4()
+    profile = InterestProfile(
+        click_history=[],
+        entity_interests=[
+            AccountInterest(entity_id=rated_id, entity_name="Elon Musk", entity_type="person", preference=5),
+        ],
+    )
+    candidates = CandidateSet(
+        articles=[
+            article("Musk 1", mention(uuid4(), "Elon Musk", "person")),
+            article("Musk 2", mention(uuid4(), "Elon Musk", "person")),
+            article("Musk 3", mention(uuid4(), "Elon Musk", "person")),
+        ]
+    )
+    seeded = run(candidates, profile)
+    assert seeded.seed_entity_name == "Elon Musk"
+    assert len(seeded.articles) == 3
+
+
 def test_falls_back_to_topic_when_no_entity_has_enough_articles():
     profile = InterestProfile(
         click_history=[],

@@ -6,10 +6,8 @@ from lenskit.pipeline import Component
 from pydantic import BaseModel
 
 from poprox_concepts.domain import CandidateSet, ImpressedSection, InterestProfile
+from poprox_recommender.components.entity_matching import ENTITY_TYPES, entity_key, select_mentioning_by_name
 from poprox_recommender.components.sections.base import select_mentioning
-
-# entity types a user can rate on the web "Entities" page (everything but topics)
-ENTITY_TYPES = ("person", "organization", "place")
 
 # only entities the user likes (rating 4-5) may headline a section
 LIKED_THRESHOLD = 4
@@ -24,10 +22,9 @@ class EntityOrTopicalCandidates(Component):
     """Seed a section from a highly-rated entity when one has enough articles today,
     otherwise fall back to a topic (the default nrms_sections behavior).
 
-    This is a drop-in replacement for TopicalCandidates that prefers a
-    person/organization/place the user rated 4-5 as the section header, so the
-    newsletter can show sections like "Elon Musk" or "Iran" and still stay full
-    on days with little entity coverage.
+    Liked entities are matched to articles by normalized name (see
+    components/entity_matching.py); the topic fallback matches by entity_id, the
+    same as TopicalCandidates, since topics share canonical ids.
     """
 
     config: EntityOrTopicalCandidatesConfig
@@ -51,34 +48,39 @@ class EntityOrTopicalCandidates(Component):
         random_seed = self.random_daily_seed(interest_profile.profile_id, today, self.config.random_seed)
         prev_section_seed_ids = [section.seed_entity_id for section in sections]
 
-        # Stage 1: a liked entity (person/organization/place, rating >= 4)
+        # Stage 1: a liked entity (person/organization/place, rating >= 4), matched by name
         liked_entities = [
             interest
             for entity_type in ENTITY_TYPES
             for interest in interest_profile.interests_by_type(entity_type)
             if interest.preference >= LIKED_THRESHOLD
         ]
-        seeded = self.seed_from(candidate_set, liked_entities, prev_section_seed_ids, random_seed, descending)
+        seeded = self.seed_from(candidate_set, liked_entities, prev_section_seed_ids, random_seed, descending, True)
         if seeded is not None:
             return seeded
 
-        # Stage 2: fall back to a topic, exactly like TopicalCandidates
+        # Stage 2: fall back to a topic, matched by entity_id like TopicalCandidates
         topics = list(interest_profile.interests_by_type("topic"))
-        seeded = self.seed_from(candidate_set, topics, prev_section_seed_ids, random_seed, descending)
+        seeded = self.seed_from(candidate_set, topics, prev_section_seed_ids, random_seed, descending, False)
         if seeded is not None:
             return seeded
 
         # Stage 3: nothing qualifies -> empty section (dropped downstream by AddSection)
         return CandidateSet(articles=[])
 
-    def seed_from(self, candidate_set, interests, prev_section_seed_ids, random_seed, descending):
+    def seed_from(self, candidate_set, interests, prev_section_seed_ids, random_seed, descending, by_name):
         interests = [i for i in interests if i.entity_id not in prev_section_seed_ids]
         rng = np.random.default_rng(random_seed)
         rng.shuffle(interests)
         interests = sorted(interests, key=lambda i: i.preference, reverse=descending)
 
         for interest in interests:
-            relevant_candidates = select_mentioning(candidate_set, [interest.entity_id])
+            if by_name:
+                relevant_candidates = select_mentioning_by_name(
+                    candidate_set, {entity_key(interest.entity_type, interest.entity_name)}
+                )
+            else:
+                relevant_candidates = select_mentioning(candidate_set, [interest.entity_id])
             if len(relevant_candidates.articles) >= self.config.min_candidates:
                 relevant_candidates.seed_entity_id = interest.entity_id
                 relevant_candidates.seed_entity_name = interest.entity_name

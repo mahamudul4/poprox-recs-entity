@@ -4,11 +4,9 @@ import numpy as np
 from lenskit.pipeline import Component
 
 from poprox_concepts.domain import CandidateSet, InterestProfile
+from poprox_recommender.components.entity_matching import ENTITY_TYPES, entity_key
 
 logger = logging.getLogger(__name__)
-
-# entity types a user can rate on the web "Entities" page (everything except topics)
-ENTITY_TYPES = ("person", "organization", "place")
 
 # only act on confident AP mentions; same threshold TopicPrefsFilter uses
 RELEVANCE_THRESHOLD = 76
@@ -18,18 +16,20 @@ class EntityPrefsFilter(Component):
     config: None
 
     def __call__(self, candidates: CandidateSet, interest_profile: InterestProfile) -> CandidateSet:
+        # keyed by (type, normalized name) since rated entities and article
+        # mentions don't share entity_ids -- see components/entity_matching.py
         prefs: dict = {}
         for entity_type in ENTITY_TYPES:
             for interest in interest_profile.interests_by_type(entity_type):
-                prefs[interest.entity_id] = interest.preference
+                prefs[entity_key(entity_type, interest.entity_name)] = interest.preference
 
         if not prefs:
             return candidates
 
-        very_high = {eid for eid, v in prefs.items() if v == 5}
-        high = {eid for eid, v in prefs.items() if v == 4}
-        low = {eid for eid, v in prefs.items() if v == 2}
-        very_low = {eid for eid, v in prefs.items() if v == 1}
+        very_high = {k for k, v in prefs.items() if v == 5}
+        high = {k for k, v in prefs.items() if v == 4}
+        low = {k for k, v in prefs.items() if v == 2}
+        very_low = {k for k, v in prefs.items() if v == 1}
 
         has_scores = getattr(candidates, "scores", None) is not None
 
@@ -37,9 +37,9 @@ class EntityPrefsFilter(Component):
         kept_scores = []
         for idx, article in enumerate(candidates.articles):
             article_entities = {
-                mention.entity.entity_id
+                entity_key(mention.entity.entity_type, mention.entity.name)
                 for mention in article.mentions
-                if mention.entity.entity_type in ENTITY_TYPES and (mention.relevance or 0) >= RELEVANCE_THRESHOLD
+                if (mention.relevance or 0) >= RELEVANCE_THRESHOLD
             }
 
             # Strongly-liked entity present -> always keep.

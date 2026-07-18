@@ -2,8 +2,7 @@ import numpy as np
 from lenskit.pipeline import Component
 
 from poprox_concepts.domain import CandidateSet, InterestProfile
-
-ENTITY_TYPES = ("person", "organization", "place")
+from poprox_recommender.components.entity_matching import ENTITY_TYPES, entity_key
 
 # AP relevance is on a [0, 100] scale; ignore weak mentions so a passing
 # reference doesn't move the score
@@ -13,8 +12,10 @@ RELEVANCE_THRESHOLD = 25.0
 class EntityArticleScorer(Component):
     """Score articles by how well they match the user's rated entities.
 
-    Scores are on a 0-1 scale with 0.5 as neutral, so they can be fused
-    with other 0-1 scores using plain weights.
+    Entities are matched by normalized name and type (not entity_id), because a
+    rated entity and the same entity mentioned in an article are different rows
+    with different ids. Scores are on a 0-1 scale with 0.5 as neutral, so they
+    can be fused with other 0-1 scores using plain weights.
     """
 
     config: None
@@ -28,7 +29,7 @@ class EntityArticleScorer(Component):
             for interest in interest_profile.interests_by_type(entity_type):
                 weight = interest.preference - 3
                 if weight != 0:
-                    weights[interest.entity_id] = weight
+                    weights[entity_key(entity_type, interest.entity_name)] = weight
 
         if not weights:
             # no rated entities -> no signal, ScoreFusion skips it
@@ -42,7 +43,8 @@ class EntityArticleScorer(Component):
                 relevance = mention.relevance or 0.0
                 if relevance < RELEVANCE_THRESHOLD:
                     continue
-                raw += weights.get(mention.entity.entity_id, 0) * relevance / 100.0
+                key = entity_key(mention.entity.entity_type, mention.entity.name)
+                raw += weights.get(key, 0) * relevance / 100.0
             # raw is in [-2, 2] after averaging over rated entities (weights are
             # at most +/-2 and relevance at most 1), so this maps it into [0, 1]
             scores.append(0.5 + raw / len(weights) / 4.0)

@@ -76,6 +76,27 @@ def test_entity_scorer_boosts_liked_and_penalizes_disliked():
     assert all(0.0 <= s <= 1.0 for s in scores.values())
 
 
+def test_entity_scorer_matches_by_name_across_different_ids():
+    # The real-world bug: a rated entity and the article's mention of the same
+    # entity are different rows with different entity_ids. Matching must be by name.
+    rated_id = uuid4()
+    article_id_for_musk = uuid4()  # different id, same name
+    profile = InterestProfile(
+        click_history=[],
+        entity_interests=[
+            AccountInterest(entity_id=rated_id, entity_name="Elon Musk", entity_type="person", preference=5),
+        ],
+    )
+    art = Article(
+        article_id=uuid4(),
+        headline="Musk news",
+        mentions=[mention(article_id_for_musk, "Elon Musk", "person", 90.0)],
+    )
+    scored = EntityArticleScorer()(CandidateSet(articles=[art]), profile)
+    # liked entity matched by name despite the id mismatch -> above neutral
+    assert scored.scores[0] > 0.5
+
+
 def test_entity_scorer_ignores_neutral_ratings():
     # A rating of 3 is "no opinion" and should not affect any score.
     profile = InterestProfile(
