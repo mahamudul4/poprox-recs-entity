@@ -97,6 +97,25 @@ def test_entity_scorer_matches_by_name_across_different_ids():
     assert scored.scores[0] > 0.5
 
 
+def test_entity_scorer_matches_across_punctuation_differences():
+    # Rated "Meta Platforms, Inc." must match an article's "Meta Platforms Inc".
+    profile = InterestProfile(
+        click_history=[],
+        entity_interests=[
+            AccountInterest(
+                entity_id=uuid4(), entity_name="Meta Platforms, Inc.", entity_type="organization", preference=5
+            ),
+        ],
+    )
+    art = Article(
+        article_id=uuid4(),
+        headline="Meta earnings",
+        mentions=[mention(uuid4(), "Meta Platforms Inc", "organization", 90.0)],
+    )
+    scored = EntityArticleScorer()(CandidateSet(articles=[art]), profile)
+    assert scored.scores[0] > 0.5
+
+
 def test_entity_scorer_ignores_neutral_ratings():
     # A rating of 3 is "no opinion" and should not affect any score.
     profile = InterestProfile(

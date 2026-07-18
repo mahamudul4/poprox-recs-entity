@@ -7,12 +7,18 @@ so their ids differ. We therefore match these entities by normalized *name* and
 type, the same way TopicPrefsFilter already matches topics.
 """
 
+import re
+
 import numpy as np
 
 from poprox_concepts.domain import CandidateSet
 
 # entity types a user can rate on the web "Entities" page (everything but topics)
 ENTITY_TYPES = ("person", "organization", "place")
+
+# relevance thresholds on AP's 0-100 scale
+STRONG_RELEVANCE = 25  # strong opinions (rating 1/5) act on moderate mentions
+CONFIDENT_RELEVANCE = 76  # nuanced rules require a confident mention
 
 
 def normalize_entity_type(entity_type: str | None) -> str | None:
@@ -23,8 +29,10 @@ def normalize_entity_type(entity_type: str | None) -> str | None:
 
 
 def normalize_entity_name(name: str | None) -> str:
-    # case- and whitespace-insensitive so "Elon  Musk" == "elon musk"
-    return " ".join((name or "").lower().split())
+    # case-, whitespace- and punctuation-insensitive, so a rated
+    # "Meta Platforms, Inc." matches an article's "Meta Platforms Inc"
+    cleaned = re.sub(r"[^\w\s]", " ", (name or "").lower())
+    return " ".join(cleaned.split())
 
 
 def entity_key(entity_type: str | None, name: str | None) -> tuple:

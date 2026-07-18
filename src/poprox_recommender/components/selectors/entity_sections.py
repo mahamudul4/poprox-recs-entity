@@ -6,7 +6,12 @@ from lenskit.pipeline import Component
 from pydantic import BaseModel
 
 from poprox_concepts.domain import CandidateSet, ImpressedSection, InterestProfile
-from poprox_recommender.components.entity_matching import ENTITY_TYPES, entity_key, select_mentioning_by_name
+from poprox_recommender.components.entity_matching import (
+    ENTITY_TYPES,
+    STRONG_RELEVANCE,
+    entity_key,
+    select_mentioning_by_name,
+)
 from poprox_recommender.components.sections.base import select_mentioning
 
 # only entities the user likes (rating 4-5) may headline a section
@@ -76,8 +81,12 @@ class EntityOrTopicalCandidates(Component):
 
         for interest in interests:
             if by_name:
+                # a rating-4/5 entity is a strong opinion, so seed its section
+                # even from moderate-relevance mentions
                 relevant_candidates = select_mentioning_by_name(
-                    candidate_set, {entity_key(interest.entity_type, interest.entity_name)}
+                    candidate_set,
+                    {entity_key(interest.entity_type, interest.entity_name)},
+                    min_relevance=STRONG_RELEVANCE,
                 )
             else:
                 relevant_candidates = select_mentioning(candidate_set, [interest.entity_id])
