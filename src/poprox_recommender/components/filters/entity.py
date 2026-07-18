@@ -8,8 +8,12 @@ from poprox_recommender.components.entity_matching import ENTITY_TYPES, entity_k
 
 logger = logging.getLogger(__name__)
 
-# only act on confident AP mentions; same threshold TopicPrefsFilter uses
-RELEVANCE_THRESHOLD = 76
+# Strong opinions (rating 1 or 5) act even on moderate AP mentions, so a
+# "strongly avoid" entity still removes an article it's only moderately about.
+STRONG_RELEVANCE_THRESHOLD = 25
+# The nuanced middle rules (rating 2 vs 4) require a confident mention, the same
+# bar TopicPrefsFilter uses, to avoid over-filtering on tangential references.
+CONFIDENT_RELEVANCE_THRESHOLD = 76
 
 
 class EntityPrefsFilter(Component):
@@ -36,25 +40,32 @@ class EntityPrefsFilter(Component):
         kept_articles = []
         kept_scores = []
         for idx, article in enumerate(candidates.articles):
-            article_entities = {
-                entity_key(mention.entity.entity_type, mention.entity.name)
-                for mention in article.mentions
-                if (mention.relevance or 0) >= RELEVANCE_THRESHOLD
-            }
+            # entities mentioned at a moderate bar (strong opinions) and at a
+            # confident bar (nuanced rules)
+            strong_entities = set()
+            confident_entities = set()
+            for mention in article.mentions:
+                relevance = mention.relevance or 0
+                if relevance >= STRONG_RELEVANCE_THRESHOLD:
+                    key = entity_key(mention.entity.entity_type, mention.entity.name)
+                    strong_entities.add(key)
+                    if relevance >= CONFIDENT_RELEVANCE_THRESHOLD:
+                        confident_entities.add(key)
 
-            # Strongly-liked entity present -> always keep.
-            if overlap(article_entities, very_high):
+            # Strongly-liked entity present (moderate+ relevance) -> always keep.
+            if overlap(strong_entities, very_high):
                 kept_articles.append(article)
                 if has_scores:
                     kept_scores.append(candidates.scores[idx])
                 continue
 
-            # Strongly-disliked entity present -> drop.
-            if overlap(article_entities, very_low):
+            # Strongly-disliked entity present (moderate+ relevance) -> drop.
+            if overlap(strong_entities, very_low):
                 continue
 
-            # Otherwise drop only if disliked entities outweigh liked ones.
-            if overlap(article_entities, high) < overlap(article_entities, low):
+            # Otherwise drop only if disliked entities outweigh liked ones,
+            # counting only confident mentions.
+            if overlap(confident_entities, high) < overlap(confident_entities, low):
                 continue
 
             kept_articles.append(article)

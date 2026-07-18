@@ -146,20 +146,29 @@ def test_entity_filter_drops_strongly_disliked():
         headline="Other news",
         mentions=[mention(OTHER, "Some Org", "organization", 90.0)],
     )
-    a_weak_dislike = Article(
+    # A rating-1 entity at moderate relevance (the real "Iran at relevance 47"
+    # case) is now dropped -- strong opinions act above the STRONG threshold (25).
+    a_moderate_dislike = Article(
         article_id=uuid4(),
-        headline="Brief Trump mention",
-        mentions=[mention(TRUMP, "Donald Trump", "person", 50.0)],  # below 76 -> not filtered
+        headline="Story moderately about Trump",
+        mentions=[mention(TRUMP, "Donald Trump", "person", 47.0)],
+    )
+    # A truly weak mention (below 25) is still kept.
+    a_below_threshold = Article(
+        article_id=uuid4(),
+        headline="Passing Trump reference",
+        mentions=[mention(TRUMP, "Donald Trump", "person", 20.0)],
     )
 
-    candidates = CandidateSet(articles=[a_liked, a_disliked, a_other, a_weak_dislike])
+    candidates = CandidateSet(articles=[a_liked, a_disliked, a_other, a_moderate_dislike, a_below_threshold])
     kept = EntityPrefsFilter()(candidates, profile)
     kept_ids = {a.article_id for a in kept.articles}
 
     assert a_liked.article_id in kept_ids
     assert a_disliked.article_id not in kept_ids
     assert a_other.article_id in kept_ids
-    assert a_weak_dislike.article_id in kept_ids
+    assert a_moderate_dislike.article_id not in kept_ids  # relevance 47 now dropped
+    assert a_below_threshold.article_id in kept_ids  # relevance 20 too weak to act on
 
 
 def make_articles(n):
