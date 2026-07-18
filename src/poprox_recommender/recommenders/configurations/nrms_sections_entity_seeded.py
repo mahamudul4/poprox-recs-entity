@@ -23,7 +23,10 @@ from poprox_recommender.components.scorers.article import ArticleScorer
 from poprox_recommender.components.scorers.entity_article import EntityArticleScorer
 from poprox_recommender.components.sections.combine import AddSection, AddSectionConfig
 from poprox_recommender.components.selectors.top_news import TopStoryCandidates
-from poprox_recommender.components.selectors.topical import TopicalCandidates, TopicalCandidatesConfig
+from poprox_recommender.components.selectors.entity_sections import (
+    EntityOrTopicalCandidates,
+    EntityOrTopicalCandidatesConfig,
+)
 from poprox_recommender.paths import model_file_path
 
 TOP_NEWS_PACKAGE_ID = UUID("72bb7674-7bde-4f3e-a351-ccdeae888502")
@@ -276,8 +279,8 @@ def configure(builder: PipelineBuilder, num_slots: int, device: str):
 
     topic1_candidates = builder.add_component(
         "topic1_candidates",
-        TopicalCandidates,
-        TopicalCandidatesConfig(min_candidates=3),
+        EntityOrTopicalCandidates,
+        EntityOrTopicalCandidatesConfig(min_candidates=3),
         candidate_set=topic1_deduped,
         interest_profile=i_profile,
         sections=yts_sections,
@@ -300,8 +303,8 @@ def configure(builder: PipelineBuilder, num_slots: int, device: str):
 
     topic2_candidates = builder.add_component(
         "topic2_candidates",
-        TopicalCandidates,
-        TopicalCandidatesConfig(min_candidates=3),
+        EntityOrTopicalCandidates,
+        EntityOrTopicalCandidatesConfig(min_candidates=3),
         candidate_set=topic2_deduped,
         interest_profile=i_profile,
         sections=topic1_sections,
@@ -324,8 +327,8 @@ def configure(builder: PipelineBuilder, num_slots: int, device: str):
 
     topic3_candidates = builder.add_component(
         "topic3_candidates",
-        TopicalCandidates,
-        TopicalCandidatesConfig(min_candidates=3),
+        EntityOrTopicalCandidates,
+        EntityOrTopicalCandidatesConfig(min_candidates=3),
         candidate_set=topic3_deduped,
         interest_profile=i_profile,
         sections=topic2_sections,
@@ -375,4 +378,3 @@ def configure(builder: PipelineBuilder, num_slots: int, device: str):
     builder.add_component(
         "recommender", AddSection, ion_config, new_section=ion_fill, existing_sections=topic3_sections
     )
-# Force rebuild Thu Jul 16 09:15:48 PM UTC 2026

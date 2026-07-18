@@ -232,12 +232,13 @@ def configure(builder: PipelineBuilder, num_slots: int, device: str):
         interest_profile=i_profile,
     )
 
-    # Final score: 60% click/topic preference, 40% entity preference.
-    # Weights are tunable for offline evaluation.
+    # Final score: 30% click/topic preference, 70% entity preference.
+    # "Heavy" entity variant -- entity ratings dominate the ranking so their
+    # effect is strongly visible for A/B comparison against nrms_sections_entities.
     fusion = builder.add_component(
         "fusion",
         ScoreFusion,
-        {"combiner": "avg", "weight1": 0.6, "weight2": 0.4},
+        {"combiner": "avg", "weight1": 0.3, "weight2": 0.7},
         candidates1=pref_norm,
         candidates2=entity_score,
     )
@@ -375,4 +376,3 @@ def configure(builder: PipelineBuilder, num_slots: int, device: str):
     builder.add_component(
         "recommender", AddSection, ion_config, new_section=ion_fill, existing_sections=topic3_sections
     )
-# Force rebuild Thu Jul 16 09:15:48 PM UTC 2026

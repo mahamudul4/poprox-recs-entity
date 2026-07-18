@@ -4,6 +4,7 @@ import numpy as np
 
 from poprox_concepts.domain import Article, CandidateSet, Entity, Mention
 from poprox_concepts.domain.profile import AccountInterest, InterestProfile
+from poprox_recommender.components.filters.entity import EntityPrefsFilter
 from poprox_recommender.components.joiners.score import MinMaxScores
 from poprox_recommender.components.scorers.entity_article import EntityArticleScorer
 
@@ -104,6 +105,40 @@ def test_entity_scorer_is_neutral_without_entity_ratings():
     article = Article(article_id=uuid4(), headline="x", mentions=[mention(ELON, "Elon Musk", "person", 90.0)])
     scored = EntityArticleScorer()(CandidateSet(articles=[article]), profile)
     assert scored.scores is None
+
+
+def test_entity_filter_drops_strongly_disliked():
+    profile = make_profile()
+
+    a_liked = Article(
+        article_id=uuid4(),
+        headline="Elon Musk news",
+        mentions=[mention(ELON, "Elon Musk", "person", 90.0)],
+    )
+    a_disliked = Article(
+        article_id=uuid4(),
+        headline="Trump news",
+        mentions=[mention(TRUMP, "Donald Trump", "person", 95.0)],
+    )
+    a_other = Article(
+        article_id=uuid4(),
+        headline="Other news",
+        mentions=[mention(OTHER, "Some Org", "organization", 90.0)],
+    )
+    a_weak_dislike = Article(
+        article_id=uuid4(),
+        headline="Brief Trump mention",
+        mentions=[mention(TRUMP, "Donald Trump", "person", 50.0)],  # below 76 -> not filtered
+    )
+
+    candidates = CandidateSet(articles=[a_liked, a_disliked, a_other, a_weak_dislike])
+    kept = EntityPrefsFilter()(candidates, profile)
+    kept_ids = {a.article_id for a in kept.articles}
+
+    assert a_liked.article_id in kept_ids
+    assert a_disliked.article_id not in kept_ids
+    assert a_other.article_id in kept_ids
+    assert a_weak_dislike.article_id in kept_ids
 
 
 def make_articles(n):
