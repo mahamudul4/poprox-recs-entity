@@ -198,32 +198,6 @@ def configure(builder: PipelineBuilder, num_slots: int, device: str):
         candidates2=negative_feedback_score,
     )
 
-    # Combine topic scoring and feedback -> all explicit data
-    explicit_fusion = builder.add_component(
-        "explicit_fusion",
-        ScoreFusion,
-        {"combiner": "avg"},
-        candidates1=topic_fusion,
-        candidates2=feedback_fusion,
-    )
-
-    # Combine click and explicit feedback (topics + article feedback) -> click/topic preference
-    pref_fusion = builder.add_component(
-        "pref_fusion",
-        ScoreFusion,
-        {"combiner": "avg", "weight1": 1, "weight2": 2},
-        candidates1=n_scorer,
-        candidates2=explicit_fusion,
-    )
-
-    # Rescale the click/topic scores to 0-1 to match the entity score scale,
-    # so the fusion weights below mean what they say
-    pref_norm = builder.add_component(
-        "pref_norm",
-        MinMaxScores,
-        candidates=pref_fusion,
-    )
-
     # Score articles by how well they match the user's rated entities (no-op if none rated)
     entity_score = builder.add_component(
         "entity_score",
@@ -232,13 +206,41 @@ def configure(builder: PipelineBuilder, num_slots: int, device: str):
         interest_profile=i_profile,
     )
 
-    # Final score: 60% click/topic preference, 40% entity preference.
+    # --- Flat weighted sum of the four signals ---------------------------------
+    # final = W_CLICK*click + W_TOPIC*topic + W_FEEDBACK*feedback + W_ENTITY*entity
+    # Each signal is rescaled to 0-1 first so the weights mean what they say; the
+    # entity weight is the largest so the user's entity ratings dominate the
+    # newsletter. Any signal with no data (e.g. no clicks) contributes nothing.
     # Weights are tunable for offline evaluation.
+    W_CLICK = 1.0
+    W_TOPIC = 1.0
+    W_FEEDBACK = 1.0
+    W_ENTITY = 3.0
+
+    click_norm = builder.add_component("click_norm", MinMaxScores, candidates=n_scorer)
+    topic_norm = builder.add_component("topic_norm", MinMaxScores, candidates=topic_fusion)
+    feedback_norm = builder.add_component("feedback_norm", MinMaxScores, candidates=feedback_fusion)
+    # entity_score is already on a 0-1 scale (0.5 = neutral), so it is not rescaled.
+
+    sum_click_topic = builder.add_component(
+        "sum_click_topic",
+        ScoreFusion,
+        {"combiner": "sum", "weight1": W_CLICK, "weight2": W_TOPIC},
+        candidates1=click_norm,
+        candidates2=topic_norm,
+    )
+    sum_plus_feedback = builder.add_component(
+        "sum_plus_feedback",
+        ScoreFusion,
+        {"combiner": "sum", "weight1": 1, "weight2": W_FEEDBACK},
+        candidates1=sum_click_topic,
+        candidates2=feedback_norm,
+    )
     fusion = builder.add_component(
         "fusion",
         ScoreFusion,
-        {"combiner": "avg", "weight1": 0.6, "weight2": 0.4},
-        candidates1=pref_norm,
+        {"combiner": "sum", "weight1": 1, "weight2": W_ENTITY},
+        candidates1=sum_plus_feedback,
         candidates2=entity_score,
     )
 
@@ -375,4 +377,3 @@ def configure(builder: PipelineBuilder, num_slots: int, device: str):
     builder.add_component(
         "recommender", AddSection, ion_config, new_section=ion_fill, existing_sections=topic3_sections
     )
-# rebuild 2026-07-18T17:47:17Z
